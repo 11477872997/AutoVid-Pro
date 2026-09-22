@@ -1,0 +1,11 @@
+.venv/
+models/
+vendor/
+outputs/
+__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+voices/
+
