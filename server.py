@@ -250,7 +250,7 @@ def get_file(path: str):
     allowed = [core.OUTPUTS.resolve(), core.VOICES.resolve()]
     if not target.exists() or not any(target == root or root in target.parents for root in allowed):
         raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(target)
+    return FileResponse(target, filename=target.name, content_disposition_type="attachment")
 
 
 if DIST.exists():

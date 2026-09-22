@@ -262,7 +262,7 @@ function TaskProgress({ task, clock }: { task: Task; clock: number }) {
 }
 
 function ResultPane({ projectId, files, busy }: { projectId: string; files: ResultFiles | null; busy: boolean }) {
-  if (files?.audio || files?.video) return <div className="result-downloads"><Title level={4}>项目 {projectId} 已生成</Title><Space wrap>{([['配音视频', files.video], ['配音音频', files.audio], ['双语字幕', files.subtitle]] as const).filter(([, path]) => !!path).map(([label, path]) => <Button key={label} type="primary" icon={<SaveOutlined />} href={`/api/files?path=${encodeURIComponent(path!)}`} target="_blank" rel="noopener noreferrer">下载{label}</Button>)}</Space></div>
+  if (files?.audio || files?.video) return <div className="result-downloads"><Title level={4}>项目 {projectId} 已生成</Title><Space wrap>{([['配音视频', files.video], ['配音音频', files.audio], ['双语字幕', files.subtitle]] as const).filter(([, path]) => !!path).map(([label, path]) => <Button key={label} type="primary" icon={<SaveOutlined />} href={`/api/files?path=${encodeURIComponent(path!)}`}>下载{label}</Button>)}</Space></div>
   return <div className="result-empty"><SaveOutlined /><Title level={4}>{busy ? '正在生成，请查看上方任务进度' : '尚无生成结果'}</Title><Text type="secondary">项目 {projectId || '尚未创建'} {busy ? '完成后会自动显示下载文件。' : '请先在第三步完成配音合成。'}</Text></div>
 }
 function DataPage({ title, icon, columns, data }: any) { return <Card><Title level={3}>{icon} {title}</Title><Table columns={columns.map((title: string, i: number) => ({ title, dataIndex: i }))} dataSource={data.map((row: any[], key: number) => ({ key, ...row }))} /></Card> }
