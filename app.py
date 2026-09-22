@@ -33,6 +33,7 @@ _ASR_CACHE: dict[str, object] = {}
 _TRANSLATOR_CACHE: dict[str, tuple[object, object]] = {}
 _TTS_CACHE: dict[str, object] = {}
 _CURRENT_STATUS = "等待任务"
+_TASK_PROGRESS = threading.local()
 _LAST_MEDIA: str | None = None
 
 LANGUAGES = {
@@ -54,6 +55,15 @@ def set_status(message: str) -> None:
     global _CURRENT_STATUS
     with _STATE_LOCK:
         _CURRENT_STATUS = message
+    reporter = getattr(_TASK_PROGRESS, "reporter", None)
+    if reporter:
+        reporter(stage=message.splitlines()[-1])
+
+
+def report_task_progress(stage: str, completed: int | None = None, total: int | None = None) -> None:
+    reporter = getattr(_TASK_PROGRESS, "reporter", None)
+    if reporter:
+        reporter(stage=stage, completed=completed, total=total)
 
 
 def get_status() -> str:
@@ -950,6 +960,7 @@ def synthesize_studio_project(
         with _LOCK:
             _CANCEL_EVENT.clear()
             total = len(project["segments"])
+            report_task_progress("准备声音模型", 0, total)
             for index, segment in enumerate(project["segments"]):
                 check_cancelled()
                 set_status(f"项目 {project_id}\n正在合成 {index + 1}/{total}：{segment['speaker']}")
@@ -967,6 +978,8 @@ def synthesize_studio_project(
                 segment["audio"] = str(fit)
                 fitted.append(fit)
                 save_project(project)
+                report_task_progress(f"已完成 {index + 1}/{total} 句配音", index + 1, total)
+            report_task_progress("正在混合配音与背景音")
             timeline_segments = [Segment(s["start"], s["end"], s["source"], s["target"]) for s in project["segments"]]
             dubbed = job / "dubbed_audio.wav"
             mix_segments(fitted, timeline_segments, dubbed)
@@ -980,6 +993,7 @@ def synthesize_studio_project(
             video = None
             media = Path(project["media"])
             if media.suffix.lower() not in {".wav", ".mp3", ".flac", ".m4a", ".ogg"}:
+                report_task_progress("正在导出视频")
                 video = job / ("dubbed_burned.mp4" if burn_enabled else "dubbed_video.mp4")
                 if burn_enabled:
                     burn_subtitles(media, final_audio, srt, video, subtitle_font, subtitle_size, subtitle_position)

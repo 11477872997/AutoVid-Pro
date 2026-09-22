@@ -14,7 +14,8 @@ const { Header, Sider, Content } = Layout
 const { Title, Text } = Typography
 
 type RowData = { key: number; id: number; start: string; end: string; speaker: string; source: string; target: string; status: string }
-type Task = { state: string; message: string; backend_status?: string; result?: any }
+type Task = { state: string; message: string; stage?: string; started_at?: number; updated_at?: number; completed?: number; total?: number; percent?: number; result?: any; label?: string }
+type ResultFiles = { video?: string | null; audio?: string | null; subtitle?: string | null }
 
 const languages = ['中文', '英语', '日语', '韩语']
 const rowFromApi = (row: any[]): RowData => ({ key: Number(row[0]), id: Number(row[0]), start: row[1], end: row[2], speaker: row[3], source: row[4], target: row[5], status: row[6] })
@@ -35,8 +36,9 @@ function App() {
   const [refPath, setRefPath] = useState('')
   const [rows, setRows] = useState<RowData[]>([])
   const [busy, setBusy] = useState(false)
-  const [taskText, setTaskText] = useState('等待任务')
-  const [progress, setProgress] = useState(0)
+  const [task, setTask] = useState<Task | null>(null)
+  const [resultFiles, setResultFiles] = useState<ResultFiles | null>(null)
+  const [clock, setClock] = useState(Date.now())
   const [history, setHistory] = useState<any[]>([])
   const [models, setModels] = useState<any[]>([])
   const [form] = Form.useForm()
@@ -57,22 +59,54 @@ function App() {
   useEffect(() => {
     jsonFetch('/api/history').then(setHistory).catch(() => {})
     jsonFetch('/api/models').then(setModels).catch(() => {})
+    const stored = localStorage.getItem('autovid-active-task')
+    if (stored) {
+      try {
+        const active = JSON.parse(stored)
+        setProjectId(active.projectId || '')
+        setStage(Number(active.stage) || 0)
+        pollTask(active.id, active.kind, active.projectId)
+      } catch { localStorage.removeItem('autovid-active-task') }
+    }
+    const timer = window.setInterval(() => setClock(Date.now()), 1000)
+    return () => window.clearInterval(timer)
   }, [])
 
-  const pollTask = async (taskId: string, onDone: (result: any) => void) => {
-    setBusy(true); setProgress(12)
-    const timer = window.setInterval(async () => {
+  const finishTask = (kind: string, data: any, knownProject?: string) => {
+    const id = data?.project_id || knownProject
+    if (id) setProjectId(id)
+    if (data?.rows) setRows(data.rows.map(rowFromApi))
+    if (kind === 'recognize') setStage(1)
+    if (kind === 'synthesize') { setResultFiles(data); setStage(3) }
+  }
+
+  const pollTask = (taskId: string, kind: string, knownProject?: string) => {
+    setBusy(true)
+    let pending = false
+    const check = async () => {
+      if (pending) return
+      pending = true
       try {
-        const task: Task = await jsonFetch(`/api/tasks/${taskId}`)
-        setTaskText(task.backend_status || task.message)
-        setProgress(value => Math.min(92, value + 4))
-        if (task.state === 'completed') {
-          window.clearInterval(timer); setBusy(false); setProgress(100); onDone(task.result); message.success(task.result?.message || '任务完成')
-        } else if (task.state === 'failed') {
-          window.clearInterval(timer); setBusy(false); setProgress(0); message.error(task.message)
+        const current: Task = await jsonFetch(`/api/tasks/${taskId}`)
+        setTask(current)
+        if (current.state === 'completed' || current.state === 'failed') {
+          window.clearInterval(timer); setBusy(false); localStorage.removeItem('autovid-active-task')
+          if (current.state === 'completed') { finishTask(kind, current.result, knownProject); message.success(current.result?.message || '任务完成') }
+          else message.error(current.message)
         }
-      } catch (error: any) { window.clearInterval(timer); setBusy(false); message.error(error.message) }
-    }, 1000)
+      } catch (error: any) {
+        window.clearInterval(timer); setBusy(false); localStorage.removeItem('autovid-active-task')
+        setTask({ state: 'failed', stage: '无法查询任务', message: error.message }); message.error(error.message)
+      } finally { pending = false }
+    }
+    const timer = window.setInterval(check, 1500)
+    void check()
+  }
+
+  const trackTask = (id: string, kind: string, activeStage: number, knownProject?: string) => {
+    localStorage.setItem('autovid-active-task', JSON.stringify({ id, kind, stage: activeStage, projectId: knownProject }))
+    setStage(activeStage)
+    pollTask(id, kind, knownProject)
   }
 
   const uploadProps = (kind: 'media' | 'reference'): UploadProps => ({
@@ -107,7 +141,7 @@ function App() {
       translation_key: values.translationKey || '',
       translation_model: values.translationModel || '',
     }) })
-    pollTask(result.task_id, data => { setProjectId(data.project_id); setRows(data.rows.map(rowFromApi)); setStage(1) })
+    trackTask(result.task_id, 'recognize', 0)
   }
 
   const translate = async () => {
@@ -117,28 +151,29 @@ function App() {
       return message.warning('请完整填写第三方中转平台的 Base URL、API Key 和模型名称')
     }
     const result = await jsonFetch(`/api/projects/${projectId}/translate`, { method: 'POST', body: JSON.stringify({ rows: rows.map(rowToApi), target_language: values.targetLanguage, style: values.translationStyle, provider: values.translationProvider, base_url: values.translationUrl || '', api_key: values.translationKey || '', model: values.translationModel || '' }) })
-    pollTask(result.task_id, data => { setRows(data.rows.map(rowFromApi)); setStage(2) })
+    trackTask(result.task_id, 'translate', 1, projectId)
   }
 
   const synthesize = async () => {
     if (!projectId) return message.warning('请先创建项目')
     const values = form.getFieldsValue()
     const result = await jsonFetch(`/api/projects/${projectId}/synthesize`, { method: 'POST', body: JSON.stringify({ rows: rows.map(rowToApi), emotion: values.emotion, speed: values.speed, background_volume: values.backgroundVolume, burn_subtitles: values.burnSubtitles }) })
-    pollTask(result.task_id, () => setStage(3))
+    setResultFiles(null)
+    trackTask(result.task_id, 'synthesize', 2, projectId)
   }
 
   const openProject = async () => {
     if (!projectId.trim()) return message.warning('请输入项目 ID')
-    try { const data = await jsonFetch(`/api/projects/${projectId.trim()}`); setRows(data.rows.map(rowFromApi)); setStage(data.rows.some((r: any[]) => r[5]) ? 2 : 1); message.success('项目已打开') } catch (error: any) { message.error(error.message) }
+    try { const data = await jsonFetch(`/api/projects/${projectId.trim()}`); setRows(data.rows.map(rowFromApi)); const project = data.project; const files = { video: project.output_video, audio: project.output_audio, subtitle: project.output_audio?.replace(/[^\\/]+$/, 'subtitles_edited.srt') }; setResultFiles(project.output_audio ? files : null); setStage(project.output_audio ? 3 : 1); message.success('项目已打开') } catch (error: any) { message.error(error.message) }
   }
 
-  const cancel = async () => { const data = await jsonFetch('/api/tasks/cancel', { method: 'POST' }); setTaskText(data.message) }
+  const cancel = async () => { const data = await jsonFetch('/api/tasks/cancel', { method: 'POST' }); message.info(data.message) }
 
   const studioTabs = [
-    { key: '0', label: '1 识别与首次翻译', children: <RecognizePane form={form} uploadProps={uploadProps} recognize={recognize} cancel={cancel} busy={busy} taskText={taskText} progress={progress} /> },
+    { key: '0', label: '1 识别与首次翻译', children: <RecognizePane uploadProps={uploadProps} recognize={recognize} cancel={cancel} busy={busy} /> },
     { key: '1', label: '2 字幕审核与重新翻译', children: <ReviewPane form={form} rows={rows} columns={columns} translate={translate} busy={busy} /> },
     { key: '2', label: '3 音频克隆与合成', children: <SynthesizePane form={form} synthesize={synthesize} busy={busy} /> },
-    { key: '3', label: '4 导出结果', children: <ResultPane projectId={projectId} /> },
+    { key: '3', label: '4 导出结果', children: <ResultPane projectId={projectId} files={resultFiles} busy={busy} /> },
   ]
 
   return <Layout className="app-shell">
@@ -157,6 +192,7 @@ function App() {
         {nav === 'studio' && <>
           <div className="page-head"><div><Title level={2}><TranslationOutlined /> 项目工作台</Title><Text type="secondary">视频翻译、字幕审核、配音合成，一站式完成</Text></div><Space><Input value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="请选择项目或输入项目 ID" className="project-input" /><Button icon={<FolderOpenOutlined />} onClick={openProject}>打开已有项目</Button></Space></div>
           <Card className="steps-card"><Steps current={stage} items={[{ title: '识别与首次翻译', description: '识别语音并生成目标字幕' }, { title: '字幕审核与重新翻译', description: '校对原文与译文' }, { title: '音频克隆与合成', description: '确认字幕后直接配音' }, { title: '导出结果', description: '导出视频、字幕及音频' }]} /></Card>
+          {task && <TaskProgress task={task} clock={clock} />}
           <Card className="workspace-card"><Form form={form} layout="vertical" initialValues={{ asrModel: 'large-v3-turbo', sourceLanguage: '中文', targetLanguage: '英语', translationStyle: '自然口语', translationProvider: '本地模型', preserveBackground: true, emotion: '自然', speed: 1, backgroundVolume: .75 }}><Tabs activeKey={String(stage)} onChange={key => setStage(Number(key))} items={studioTabs} /></Form></Card>
         </>}
         {nav === 'models' && <DataPage title="模型管理" icon={<RobotOutlined />} columns={['模型', '状态', '路径']} data={models} />}
@@ -168,7 +204,7 @@ function App() {
   </Layout>
 }
 
-function RecognizePane({ uploadProps, recognize, cancel, busy, taskText, progress }: any) {
+function RecognizePane({ uploadProps, recognize, cancel, busy }: any) {
   return <div>
     <div className="section-title"><CloudUploadOutlined /> 上传素材 <span>识别原始语音并立即生成首版目标字幕</span></div>
     <Row gutter={18}>
@@ -179,7 +215,6 @@ function RecognizePane({ uploadProps, recognize, cancel, busy, taskText, progres
     <div className="translation-row"><Form.Item name="translationProvider" label="首次翻译后端"><Radio.Group options={[{ label: '本地模型', value: '本地模型' }, { label: '第三方中转平台（OpenAI 兼容）', value: 'OpenAI 兼容接口' }]} /></Form.Item><Form.Item name="preserveBackground" valuePropName="checked" label="音轨处理"><Checkbox>分离并保留背景音</Checkbox></Form.Item></div>
     <Form.Item noStyle shouldUpdate={(previous, current) => previous.translationProvider !== current.translationProvider}>{({ getFieldValue }) => getFieldValue('translationProvider') === 'OpenAI 兼容接口' && <ThirdPartyTranslationFields />}</Form.Item>
     <Space.Compact block><Button type="primary" size="large" icon={<PlayCircleFilled />} onClick={recognize} loading={busy} className="main-action">开始识别与首次翻译</Button><Button size="large" icon={<StopFilled />} onClick={cancel} className="stop-button">停止任务</Button></Space.Compact>
-    {(busy || taskText !== '等待任务') && <div className="task-status"><Text strong>{taskText}</Text><Progress percent={progress} status={busy ? 'active' : 'normal'} /></div>}
   </div>
 }
 
@@ -211,7 +246,25 @@ function ThirdPartyTranslationFields() {
 
 function SynthesizePane({ synthesize, busy }: any) { return <div><div className="section-title"><AudioOutlined /> 克隆与合成 <span>目标字幕审核完成后再生成配音</span></div><div className="settings-grid four"><Form.Item name="emotion" label="表达风格"><Select options={['自然','平静','开心','严肃','激动','温柔','悲伤'].map(value => ({ value }))} /></Form.Item><Form.Item name="speed" label="语速"><Select options={[.8,1,1.1,1.2].map(value => ({ value, label: `${value}x` }))} /></Form.Item><Form.Item name="backgroundVolume" label="背景音量"><Select options={[.5,.65,.75,.9,1].map(value => ({ value }))} /></Form.Item><Form.Item name="burnSubtitles" valuePropName="checked" label="字幕"><Checkbox>烧录到视频</Checkbox></Form.Item></div><Button type="primary" size="large" block icon={<SaveOutlined />} onClick={synthesize} loading={busy}>审核完成，开始音频克隆</Button></div> }
 
-function ResultPane({ projectId }: { projectId: string }) { return <div className="result-empty"><SaveOutlined /><Title level={4}>等待生成结果</Title><Text type="secondary">项目 {projectId || '尚未创建'} 完成合成后，可在这里下载视频、音频和字幕。</Text></div> }
+function formatDuration(seconds: number) { const s = Math.max(0, Math.floor(seconds)); return `${Math.floor(s / 60)}分${String(s % 60).padStart(2, '0')}秒` }
+
+function TaskProgress({ task, clock }: { task: Task; clock: number }) {
+  const running = task.state === 'running' || task.state === 'queued'
+  const elapsed = task.started_at ? (clock / 1000 - task.started_at) : 0
+  const done = task.completed || 0
+  const total = task.total || 0
+  const remaining = running && done > 0 && total > done ? Math.round(elapsed / done * (total - done)) : null
+  const stalled = running && task.updated_at && clock / 1000 - task.updated_at > 120
+  return <div className="global-task-status" role="status" aria-live="polite">
+    <div className="task-status-head"><strong>{task.label || '处理任务'} · {task.stage || task.message}</strong><Tag color={task.state === 'failed' ? 'error' : task.state === 'completed' ? 'success' : 'processing'}>{task.state === 'failed' ? '失败' : task.state === 'completed' ? '完成' : task.state === 'queued' ? '排队中' : '处理中'}</Tag></div>
+    {task.state === 'failed' ? <Text type="danger">{task.message}</Text> : <><Progress className={task.percent == null && running ? 'indeterminate-progress' : ''} percent={task.percent ?? (running ? 35 : 100)} showInfo={task.percent != null} status={running ? 'active' : 'success'} /><div className="task-meta"><span>{total ? `已完成 ${done}/${total} 句` : '正在执行当前阶段'}</span><span>已用 {formatDuration(elapsed)}</span>{remaining !== null && <span>预计配音还需约 {formatDuration(remaining)}，另需混音导出</span>}{stalled && <span className="task-warning">此阶段超过 2 分钟没有新进度，请查看后端终端；模型加载或长句合成可能较慢。</span>}</div></>}
+  </div>
+}
+
+function ResultPane({ projectId, files, busy }: { projectId: string; files: ResultFiles | null; busy: boolean }) {
+  if (files?.audio || files?.video) return <div className="result-downloads"><Title level={4}>项目 {projectId} 已生成</Title><Space wrap>{([['配音视频', files.video], ['配音音频', files.audio], ['双语字幕', files.subtitle]] as const).filter(([, path]) => !!path).map(([label, path]) => <Button key={label} type="primary" icon={<SaveOutlined />} href={`/api/files?path=${encodeURIComponent(path!)}`} target="_blank" rel="noopener noreferrer">下载{label}</Button>)}</Space></div>
+  return <div className="result-empty"><SaveOutlined /><Title level={4}>{busy ? '正在生成，请查看上方任务进度' : '尚无生成结果'}</Title><Text type="secondary">项目 {projectId || '尚未创建'} {busy ? '完成后会自动显示下载文件。' : '请先在第三步完成配音合成。'}</Text></div>
+}
 function DataPage({ title, icon, columns, data }: any) { return <Card><Title level={3}>{icon} {title}</Title><Table columns={columns.map((title: string, i: number) => ({ title, dataIndex: i }))} dataSource={data.map((row: any[], key: number) => ({ key, ...row }))} /></Card> }
 function EmptyPage({ title, icon, text }: any) { return <Card className="empty-page"><Title level={3}>{icon} {title}</Title><Text type="secondary">{text}</Text></Card> }
 

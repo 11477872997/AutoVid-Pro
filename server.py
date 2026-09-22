@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -84,16 +85,29 @@ def set_task(task_id: str, **values: Any) -> None:
 
 def submit_job(label: str, fn: Callable[[], Any]) -> str:
     task_id = uuid.uuid4().hex[:12]
-    set_task(task_id, id=task_id, label=label, state="queued", message="任务已进入队列", result=None)
+    set_task(task_id, id=task_id, label=label, state="queued", message="任务已进入队列", stage="排队中", result=None,
+             started_at=None, updated_at=time.time(), completed=None, total=None, percent=None)
+
+    def report(*, stage: str, completed: int | None = None, total: int | None = None) -> None:
+        values: dict[str, Any] = {"stage": stage, "updated_at": time.time()}
+        if completed is not None and total is not None:
+            values.update(completed=completed, total=total, percent=round(completed / total * 100) if total else None)
+        else:
+            values.update(completed=None, total=None, percent=None)
+        set_task(task_id, **values)
 
     def runner() -> None:
-        set_task(task_id, state="running", message="任务正在处理")
+        set_task(task_id, state="running", message="任务正在处理", stage="正在准备", started_at=time.time(), updated_at=time.time())
+        core._TASK_PROGRESS.reporter = report
         try:
             result = fn()
-            set_task(task_id, state="completed", message="任务完成", result=result)
+            set_task(task_id, state="completed", message="任务完成", stage="处理完成", result=result,
+                     percent=100, updated_at=time.time())
         except Exception as exc:
             core.console_log(f"API task failed: {type(exc).__name__}: {exc}")
-            set_task(task_id, state="failed", message=str(exc))
+            set_task(task_id, state="failed", message=str(exc), stage="处理失败", updated_at=time.time())
+        finally:
+            core._TASK_PROGRESS.reporter = None
 
     executor.submit(runner)
     return task_id
