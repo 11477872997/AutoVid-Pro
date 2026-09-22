@@ -1,5 +1,7 @@
 # AutoVidDub
 
+![AutoVid Pro 系统预览 / Dashboard Preview](docs/images/autovid-pro-dashboard.png)
+
 本地视频中译英、字幕生成和音色克隆配音工具。默认流水线：
 
 1. `faster-whisper` 识别中文并生成时间轴

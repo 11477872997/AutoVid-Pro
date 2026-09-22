@@ -2,6 +2,8 @@
 
 中文 / English bilingual documentation
 
+![AutoVid Pro 系统预览 / Dashboard Preview](docs/images/autovid-pro-dashboard.png)
+
 ## 中文
 
 AutoVid Pro 是一个面向本地运行的视频与音频翻译、字幕审核和多语言配音工具。它将语音识别、字幕翻译、字幕编辑、声音克隆和背景音合并组织成一个可恢复的项目流程。
@@ -198,4 +200,3 @@ Only clone voices you own or have explicit permission to use. Do not upload priv
 ### Contributing and license
 
 Issues, documentation improvements, model adapters, and pull requests are welcome. Before publishing, add a formal `LICENSE` file for this repository, such as Apache-2.0 or MIT. Upstream models, CosyVoice2, FFmpeg, and other dependencies remain subject to their own licenses.
-
