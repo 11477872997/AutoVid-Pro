@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  App as AntApp, Avatar, Button, Card, Checkbox, Col, Form, Input, Layout, Menu,
+  App as AntApp, Button, Card, Checkbox, Col, Form, Input, Layout, Menu,
   Progress, Radio, Row, Select, Space, Steps, Table, Tabs, Tag, Typography, Upload,
 } from 'antd'
 import type { TableColumnsType, UploadProps } from 'antd'
 import {
-  AudioOutlined, BellOutlined, CloudUploadOutlined, DatabaseOutlined, FileTextOutlined,
+  AudioOutlined, CloudUploadOutlined, DatabaseOutlined, FileTextOutlined,
   FolderOpenOutlined, HomeOutlined, InboxOutlined, PlayCircleFilled, RobotOutlined,
-  SaveOutlined, SettingOutlined, StopFilled, TeamOutlined, TranslationOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, StopFilled, TeamOutlined, TranslationOutlined,
 } from '@ant-design/icons'
 
 const { Header, Sider, Content } = Layout
@@ -30,6 +30,7 @@ async function jsonFetch(url: string, init?: RequestInit) {
 function App() {
   const { message } = AntApp.useApp()
   const [nav, setNav] = useState('studio')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [stage, setStage] = useState(0)
   const [projectId, setProjectId] = useState('')
   const [mediaPath, setMediaPath] = useState('')
@@ -176,18 +177,18 @@ function App() {
     { key: '3', label: '4 导出结果', children: <ResultPane projectId={projectId} files={resultFiles} busy={busy} /> },
   ]
 
-  return <Layout className="app-shell">
-    <Sider width={260} className="sidebar">
-      <div className="logo"><div className="logo-mark">A</div><div><strong>AutoVid <i>Pro</i></strong><span>视频本地化与多语言制作平台</span></div></div>
+  return <Layout className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+    <Sider width={260} collapsedWidth={72} collapsed={sidebarCollapsed} trigger={null} className="sidebar">
+      <div className="logo"><div className="logo-mark">A</div>{!sidebarCollapsed && <div><strong>AutoVid <i>Pro</i></strong><span>视频本地化与多语言制作平台</span></div>}</div>
       <Menu theme="dark" mode="inline" selectedKeys={[nav]} onClick={e => setNav(e.key)} items={[
         { key: 'studio', icon: <HomeOutlined />, label: '项目工作台' }, { key: 'voices', icon: <AudioOutlined />, label: '音色库' },
         { key: 'batch', icon: <InboxOutlined />, label: '批量任务' }, { key: 'models', icon: <DatabaseOutlined />, label: '模型管理' },
         { key: 'history', icon: <FileTextOutlined />, label: '任务记录' },
       ]} />
-      <div className="sidebar-settings"><SettingOutlined /> 系统设置</div>
+      <Button className="sidebar-toggle" type="text" icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setSidebarCollapsed(value => !value)} title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'} aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}>{!sidebarCollapsed && '收起侧栏'}</Button>
     </Sider>
     <Layout>
-      <Header className="topbar"><span>让全球内容，触达更多人</span><Space size={20}><Text>● CUDA 正常</Text><Text>任务队列 1</Text><BellOutlined /><Avatar>U</Avatar><Text>User</Text></Space></Header>
+      <Header className="topbar"><span>让全球内容，触达更多人</span></Header>
       <Content className="content">
         {nav === 'studio' && <>
           <div className="page-head"><div><Title level={2}><TranslationOutlined /> 项目工作台</Title><Text type="secondary">视频翻译、字幕审核、配音合成，一站式完成</Text></div><Space><Input value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="请选择项目或输入项目 ID" className="project-input" /><Button icon={<FolderOpenOutlined />} onClick={openProject}>打开已有项目</Button></Space></div>

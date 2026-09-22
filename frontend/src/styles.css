@@ -9,8 +9,9 @@ html, body, #root { margin: 0; min-width: 1180px; min-height: 100%; background: 
 .sidebar .ant-menu { padding: 14px 12px; background: transparent !important; border: 0 !important }
 .sidebar .ant-menu-item { height: 50px; margin: 5px 0; border-radius: 7px; color: #c6d2e2; font-size: 15px; font-weight: 600 }
 .sidebar .ant-menu-item-selected { color: white !important; background: linear-gradient(100deg,#176ef1,#2b87ff) !important; box-shadow: 0 7px 18px rgba(15,108,240,.25) }
-.sidebar-settings { margin-top: auto; padding: 22px 28px; color: #cbd6e5; border-top: 1px solid rgba(255,255,255,.06) }
+.sidebar-toggle.ant-btn { flex: none; width: 100%; height: 66px; margin-top: auto; padding: 0 28px; justify-content: flex-start; border-top: 1px solid rgba(255,255,255,.08); border-radius: 0; color: #cbd6e5; font-size: 15px }.sidebar-toggle.ant-btn:hover { background: rgba(255,255,255,.08) !important; color: white !important }.sidebar-toggle .anticon { font-size: 18px }.sidebar-collapsed .sidebar-toggle.ant-btn { justify-content: center; padding: 0 }.sidebar-collapsed .logo { justify-content: center; padding-inline: 0 }.sidebar-collapsed .sidebar .ant-menu { padding-inline: 8px }
 .app-shell > .ant-layout { margin-left: 260px }
+.app-shell.sidebar-collapsed > .ant-layout { margin-left: 72px }
 .topbar { position: sticky; top: 0; z-index: 15; height: 58px; padding: 0 30px; display: flex; align-items: center; justify-content: space-between; color: #d9e2ee; background: linear-gradient(90deg,#3b5071,#293d5c) !important; box-shadow: 0 2px 10px rgba(26,45,70,.12) }
 .topbar .ant-typography { color: #eef3f9 }
 .content { width: 100%; max-width: 1480px; margin: 0 auto; padding: 26px 30px 40px }
